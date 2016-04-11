@@ -1,3 +1,9 @@
+"""
+Kelly Stewart
+
+Get data of all repos from Github and Bitbucket APIs
+"""
+
 import re
 
 from json import loads
@@ -10,15 +16,14 @@ def read_json(response):
   return loads(response.read().decode())
 
 
-def clean(repo, wanted):
-  for key in set(repo.keys()) - set(wanted):
+def clean(repo, keys):
+  for key in set(repo.keys()) - set(keys):
     del repo[key]
 
 
-def github_repos(items_required):
+def github_repos(items_required, keys=["id", "name", "description"]):
   NEXT_LINK_PAT = re.compile(r'^<(.*?)>; rel="next"')
   PER_PAGE = 100
-  DESIRED_KEYS = ["id", "name", "description"]
 
   url = "https://api.github.com/repositories?q=per_page=" + str(per_page)
   repos = []
@@ -34,7 +39,7 @@ def github_repos(items_required):
     # parse the returned data and send to the total data set
     page = read_json(response)
     for repo in page:
-      clean(repo, DESIRED_KEYS)
+      clean(repo, keys)
       repos.append(repo)
 
     # return the link required to access the next page
@@ -50,24 +55,32 @@ def github_repos(items_required):
   return repos
 
 
-URL = "https://api.bitbucket.org/2.0/repositories"
-items = 0
-repos = []
+def bitbucket_repos(items_required, keys=["uuid", "name", "description"]):
+  """Return a cleaned list of Bitbucket repos"""
+  URL = "https://api.bitbucket.org/2.0/repositories"
+  items = 0
+  repos = []
 
-def next_page(repos, url, items):
-  DESIRED_KEYS = ["uuid", "name", "description"]
-  # get data from server
-  response = urlopen(url)
+  def next_page(repos, url, items):
+    # get data from server
+    response = urlopen(url)
 
-  # parse returned data and send to total data set
-  page = read_json(response)
-  for repo in page["values"]:
-    clean(repo, DESIRED_KEYS)
-    repos.append(repo)
+    # parse returned data and send to total data set
+    page = read_json(response)
+    for repo in page["values"]:
+      clean(repo, keys)
+      repos.append(repo)
 
-  return items + page["pagelen"], page["next"]
+    # return new number of entries, next url to follow
+    return items + page["pagelen"], page["next"]
 
 
-items, next_url = next_page(repos, URL, items)
-while items <= ITEMS_REQUIRED:
+  # populate repos with required number of entries
   items, next_url = next_page(repos, URL, items)
+  while items <= items_required:
+    items, next_url = next_page(repos, URL, items)
+
+
+
+bitbucket = bitbucket_repos(ITEMS_REQUIRED)
+github = github_repos(ITEMS_REQUIRED)
