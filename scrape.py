@@ -1,90 +1,86 @@
 """
 Kelly Stewart
 
-Get data of all repos from Github and Bitbucket APIs
+Build a SQL database of a Github and Bitbucket repositories
 """
 
-import re
+import sqlite3
 
-from json import loads
+from re import match
+from json import loads as json_loads
 from urllib.request import Request, urlopen
-from urllib.parse import urljoin
+
+GH_HOST = "GH"
+GH_URL = "https://api.github.com/repositories?q=per_page=100"
+BB_HOST = "BB"
+BB_URL = "https://api.bitbucket.org/2.0/repositories"
 
 ITEMS_REQUIRED = 600
+COLS = ["name TEXT NOT NULL", "description TEXT"]
 
-def read_json(response):
-  """Return a HTTP response parsed from json"""
-  return loads(response.read().decode())
+# connect and create the initial table
+db = sqlite3.connect("repositories.db")
+db.execute("""CREATE TABLE Repositories
+(id INTEGER PRIMARY KEY, host TEXT NOT NULL, ?)""", ", ".join(COLS))
 
 
-def clean(repo, keys):
-  """Return a repo containing only desired keys"""
-  for key in set(repo.keys()) - set(keys):
+def add_repo(repo, host):
+  """Clean an entry and add it to the database
+
+  Clean by removing unwanted keys, assuming wanted keys are only those in COLS
+  also add a column specifying the host.
+  """
+
+  # remove unwanted keys
+  for key in set(repo.keys()) - set(i.split(" ")[0] for i in COLS):
     del repo[key]
+  # add a key specifying the host
+  repo["host"] = host
+
+  # add entry into database
+  db.executemany("INSERT INTO Repositories VALUES (?,?,?)", repo.items())
 
 
-def github_repos(items_required, keys=["id", "name", "description"]):
-  """Return a specified number of Github repos with only desired keys"""
-  NEXT_LINK_PAT = re.compile(r'^<(.*?)>; rel="next"')
-  PER_PAGE = 100
+def next_page(url, host):
+  """Return the items in this page and the link to the next.
 
-  url = "https://api.github.com/repositories?q=per_page=" + str(per_page)
-  repos = []
+  Also add this page's repos to the database."""
+  req = Request(url)
 
-
-  def next_page(repos, url):
-    """Return the link required for next page, and add current page to repos"""
-    # get data from server
-    req = Request(url)
-    # explicitly request v3 version of the API
+  # explicitly request v3 version of the Github API
+  if host == GH_HOST:
     req.add_header("Accept", "application/vnd.github.v3+json")
-    response = urlopen(req)
 
-    # parse the returned data and send to the total data set
-    page = read_json(response)
-    for repo in page:
-      clean(repo, keys)
-      repos.append(repo)
+  # parse the response from json
+  page = json_loads(urlopen(req).read().decode())
 
-    # return the link required to access the next page
-    return re.match(NEXT_LINK_PAT, response.getheader('Link')).group(1)
+  if host == GH_HOST:
+    items = 100       # assume Github will always return the max items possible
+    link = match('<(.*?)>; rel="next"', response.getheader('Link')).group(1)
+    repos = page
+  else:
+    items = page["pagelen"]
+    link = page["next"]
+    repos = page["values"]
 
-  # populate repos with the required number of entries
-  # this assumes that the amount of entries specified per page will always be
-  # the amount of entries given
-  next_url = next_page(repos, url)
-  for _ in range(PER_PAGE, items_required + 1, PER_PAGE):
-    next_url = next_page(repos, next_url)
+  for repo in repos:
+    add_repo(repo, host)
 
-  return repos
+  return items, link
 
 
-def bitbucket_repos(items_required, keys=["uuid", "name", "description"]):
-  """Return a specified number of Bitbucket repos with only desired keys"""
-  URL = "https://api.bitbucket.org/2.0/repositories"
-  items = 0
-  repos = []
-
-  def next_page(repos, url, items):
-    """Return link for next page and new number of entries and add current page"""
-    # get data from server
-    response = urlopen(url)
-
-    # parse returned data and send to total data set
-    page = read_json(response)
-    for repo in page["values"]:
-      clean(repo, keys)
-      repos.append(repo)
-
-    # return new number of entries, next url to follow
-    return items + page["pagelen"], page["next"]
+def populate(url, host):
+  """Populate the database with the required number of entries"""
+  item_count, link = next_page(url, host)
+  items = item_count
+  while items <= ITEMS_REQUIRED:
+    item_count, link = next_page(link, host)
+    items += item_count
 
 
-  # populate repos with required number of entries
-  items, next_url = next_page(repos, URL, items)
-  while items <= items_required:
-    items, next_url = next_page(repos, URL, items)
 
+populate(GH_URL, GH_HOST)
+populate(BB_URL, BB_HOST)
 
-bitbucket = bitbucket_repos(ITEMS_REQUIRED)
-github = github_repos(ITEMS_REQUIRED)
+db.commit()
+db.close()
