@@ -5,18 +5,21 @@ Build a SQL database of a Github and Bitbucket repositories
 """
 
 import sqlite3
+import os.path
 
 from re import match
 from json import loads as json_loads
-from os.path import isfile
 from urllib.request import Request, urlopen
 
+FORCE_RAW_GEN = False # whether to generate raw data even if it already exists
 VERBOSE = True
 
 GH_HOST = "GH"
 GH_URL = "https://api.github.com/repositories?q=per_page=100"
+GH_FILE = "github.txt"
 BB_HOST = "BB"
 BB_URL = "https://api.bitbucket.org/2.0/repositories"
+BB_FILE = "bitbucket.txt"
 
 ITEMS_REQUIRED = 600
 items_per_host = int(ITEMS_REQUIRED / 2)
@@ -26,8 +29,12 @@ VAR_COLS = ["name TEXT", "description TEXT"]
 TABLE_NAME = "Repositories"
 DB_PATH = "repositories.db"
 
+RAW_DIR = "raw"
+
+if not os.path.isdir: os.mkdir(RAW_DIR)
+
 # remove any existing database
-if isfile(DB_PATH):
+if os.path.isfile(DB_PATH):
   if VERBOSE: print("Removing existing database file...")
   os.remove(DB_PATH)
 
@@ -63,13 +70,17 @@ def next_page(url, host):
 
   Also add this page's repos to the database."""
   req = Request(url)
-
+  
   # explicitly request v3 version of the Github API
   if host == GH_HOST:
     req.add_header("Accept", "application/vnd.github.v3+json")
 
   response = urlopen(req)
   # parse the response from json
+  if os.path.isfile(os.join(RAW_DIR, GH_FILE)):
+    if FORCE_RAW_GEN: os.remove(os.join)
+  with open(os.path.join(RAW_DIR, url + ".txt"), 'a') as f:
+    d
   page = json_loads(response.read().decode())
 
   if host == GH_HOST:
