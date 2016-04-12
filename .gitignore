@@ -61,3 +61,9 @@ target/
 #Ipython Notebook
 .ipynb_checkpoints
 /repositories.db
+/BB/repositories-pagelen=100&after=2008-08-14T12%3A58%3A25.489512%2B00%3A00.txt
+/BB/repositories-pagelen=100&after=2008-09-06T13%3A44%3A01.146532%2B00%3A00.txt
+/BB/repositories-pagelen=100.txt
+/GH/repositories-.txt
+/GH/repositories-since=367.txt
+/GH/repositories-since=866.txt
