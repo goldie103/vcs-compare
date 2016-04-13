@@ -1,0 +1,51 @@
+#+TITLE:       INFO1903
+#+AUTHOR:    Kelly Stewart
+#+EMAIL:     stewart.g.kelly@gmail.com
+#+SETUPFILE: "../export.org"
+
+* Data
+The data used was the public repositories on [[http://github.com][Github]] and [[http://bitbucket.org][Bitbucket]], and was obtained by querying their respective APIs.
+
+Both APIs produced a JSON-formatted result, which in some cases directly included the required data, or included a link to another API query which held related data. In some form or another, both had access to all of the following:
+    - Name
+    - Description
+    - Owner
+    - Size
+    - Language
+    - Branches
+    - Commits
+    - Issues
+    - Forks
+    - Subscribers
+
+Of this, only these were used and saved into the database:
+    - Name
+    - Description
+    - Size
+    - Number of forks
+    - Primary language
+
+As well as an added ~host~ key for which host the data came from (i.e. ~GH~ for Github or ~BB~ for Bitbucket).
+
+** Bitbucket
+The main access point for Bitbucket was this URL
+#+BEGIN_SRC
+https://api.bitbucket.org/2.0/repositories
+#+END_SRC
+which produces a paginated list of repositories according the value of the ~pagelen~ parameter. The first URL used to access the API is 
+#+BEGIN_SRC
+https://api.bitbucket.org/2.0/repositories?pagelen=100
+#+END_SRC
+which grabs the maximum number of entries.
+
+Each entry’s full spec can be viewed [[https://confluence.atlassian.com/bitbucket/repositories-endpoint-423626330.html][here]] on the Bitbucket API documentation website. For brevity, these are only the relevant entries for an example of the data returned on a repository from this query:
+#+BEGIN_SRC json
+
+#+END_SRC
+** Source
+The data was obtained through querying the [[https://api.github.com][Github]] and [[https://api.bitbucket.org/2.0][Bitbucket]] APIs and accessing several end
+** Interest
+
+* Cleaning
+
+* Analysis

@@ -2,23 +2,31 @@ import os.path
 import sqlite3
 import json
 
-from re import match
+from re import match, sub
 from shutil import rmtree
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from urllib.request import Request, urlopen
+from urllib.error import URLError
 
 VERBOSE = True
-TESTING = False
+TESTING = True
 
 GH_HOST = "GH"
+GH_URL = "https://api.github.com/repositories"
 BB_HOST = "BB"
+BB_URL = "https://api.bitbucket.org/2.0/repositories"
 
 TABLE = "Repositories"
 DB_PATH = "repositories.db"
 COLS = ["id INTEGER PRIMARY KEY NOT NULL",
         "host TEXT NOT NULL",
         "name TEXT",
-        "description TEXT"]
+        "description TEXT",
+        "size INTEGER",
+        #"commits INTEGER",
+        #"issues INTEGER",
+        "forks INTEGER",
+        "language TEXT"]
 keys = [i.split(" ")[0] for i in COLS] # keys to keep in each repo
 
 
@@ -28,111 +36,7 @@ def vprint(*args):
     print(*args)
 
 
-def next_page(url, host):
-  """Write a response to a file; return the next url and the number of items"""
-  # file name is the last part of the url i.e. "repositories-per_page=100.txt"
-  urlp = urlparse(url)
-  fpath = os.path.join(host, "{}-{}.txt".format(os.path.basename(urlp.path),
-                                                urlp.query, ".txt"))
-  fexists = os.path.isfile(fpath)
-
-  if fexists:
-    os.remove(fpath)
-
-  vprint("  Requesting", url, "...")
-  req = Request(url)
-
-  # explicitly request v3 version of the Github API
-  if host == GH_HOST:
-    req.add_header("Accept", "application/vnd.github.v3+json")
-
-  resp = urlopen(req)
-  page = resp.read().decode()
-
-  with open(fpath, 'w') as f:
-    f.write(page)
-
-  # return the link to the next page
-  if host == BB_HOST:
-    link = json.loads(page)["next"]
-  else:
-    link = match('<(.*?)>; rel="next"', resp.getheader('Link')).group(1)
-  return link
-
-
-def populate(host):
-  """Populate the folder with raw data retrieved from the API"""
-
-  ITEMS_REQUIRED = 600  # number of total repos to get
-  PER_PAGE = 100
-
-  vprint("Populating", host)
-  if host == GH_HOST:
-    url = "https://api.github.com/repositories"  # Github API ignores per_page
-  else:
-    url = "https://api.bitbucket.org/2.0/repositories?pagelen=" + str(PER_PAGE)
-
-  vprint("  Making new", host, "directory...")
-  if os.path.isdir(host):
-    rmtree(host)
-  os.mkdir(host)
-
-  per_host = int(ITEMS_REQUIRED / 2) if not TESTING else PER_PAGE
-  link = url
-  count = 0
-  while count < per_host:
-    link = next_page(link, host)
-    count += PER_PAGE
-  vprint("Finished populating", host)
-
-
-def raw_gen():
-  """Populate Github and Bitbucket repositories."""
-  vprint("\nBeginning populating repositories")
-  populate(GH_HOST)
-  populate(BB_HOST)
-  vprint("Finished populating repositories")
-
-
-def create_db(path):
-  """Return a database, removing existing databases if needed"""
-  # remove any existing database
-  if os.path.isfile(path):
-    vprint("  Removing existing", path, "file...")
-    os.remove(path)
-
-  vprint("  Creating new", path, "file...")
-  # connect and create the initial table
-  db = sqlite3.connect(path)
-  db.execute("CREATE TABLE {} ({})".format(TABLE, ", ".join(COLS)))
-  return db
-
-
-def read_host(host, db):
-  """Read the contents of a host folder and add its repos"""
-  vprint("Adding", host, "repositories...")
-  files = os.listdir(host)
-  for fpath in files:
-    vprint("  Reading", fpath, "into database...")
-    with open(os.path.join(host, fpath)) as f:
-      page = json.loads(f.read())
-      repos = page if host == GH_HOST else page["values"]
-    for repo in repos:
-      prep_repo(repo, host)
-      add_repo(repo, db)
-    vprint("Finished adding", host, "repositories")
-
-
-def prep_repo(repo, host):
-  """Remove unwanted keys and add the host"""
-  # remove unwanted keys
-  for key in set(repo.keys()) - set(keys):
-    del repo[key]
-  # add the host
-  repo["host"] = host
-
-
-def add_repo(repo, db):
+def add_repo(repo):
   """Add a repository to the database"""
   db.execute(
     # first value as NULL to force auto-incrementing id
@@ -142,22 +46,132 @@ def add_repo(repo, db):
     [repo[i] for i in keys[1:]])
 
 
-def close_db(db):
-  """Commit and close the database"""
-  vprint("Committing database changes...")
+def next_gh(url):
+
+  # return a parsed response from a url
+  def get_gh(url, retLink=False):
+    url = sub("{/.+?}", "", url)
+    vprint("  Requesting", url, "...")
+
+    url = Request(url)
+    # explicitly request v3 version of the API
+    # make github like me :(
+    url.add_header("Accept", "application/vnd.github.v3+json")
+    url.add_header("User-Agent", "miscoined")
+    # so secure
+    url.add_header("Authorization", "token 501dbdd48b6da585957237c46597ccd57ef8588c")
+
+    resp = urlopen(url)
+    parsed = json.loads(resp.read().decode())
+    if retLink:
+      return match('<(.*?)>; rel="next"', resp.getheader('Link')).group(1), parsed
+    return parsed
+
+
+  link, page = get_gh(url, retLink=True)
+
+  for info in page:
+    # populate dictionary with data
+    info = get_gh("{}/{}".format(GH_URL[:-7], info["full_name"]))
+    STATIC = ["name", "description", "language"]
+    repo = {i: info[i] for i in STATIC}
+    repo["updated_on"] = info["updated_at"]
+    repo["forks"] = info["forks_count"]
+    repo["created_on"] = info["created_at"]
+    repo["size"] = info["size"] * 1024
+    # repo["commits"] = len(get_gh(info["commits_url"]))
+    # repo["issues"] = len(get_gh(info["issues_url"]))
+    repo["host"] = GH_HOST
+
+    # add repo to the database
+    add_repo(repo)
+
+  return link
+
+
+def next_bb(url):
+
+  # return a parsed response from a url
+  def get_bb(url):
+    vprint("  Requesting", url, "...")
+    try:
+      return json.loads(urlopen(url).read().decode())
+    except URLError as e:
+      print("An error occured retrieving", url, "skipping...")
+      return ""
+
+  resp = get_bb(url)
+  link = resp["pagelen"]
+  page = resp["values"]
+
+  for info in page:
+    # populate dictionary with data
+    STATIC = ["language", "size", "description", "name", "created_on", "updated_on"]
+    repo = {i: info[i] for i in STATIC}
+    # repo["commits"] = len(get_bb(info["links"]["commits"]["href"])["values"])
+    repo["forks"] = len(get_bb(info["links"]["forks"]["href"])["values"])
+    # repo["issues"] = int(get_bb("{}/{}/issues".format(BB_URL, info["full_name"]))["count"])
+    repo["host"] = BB_HOST
+
+    # add dictionary to the database
+    add_repo(repo)
+
+  return link
+
+
+def populate(isGH=True):
+  """Populate the database with prepared data retrieved from the API"""
+
+  ITEMS_REQUIRED = 600  # number of total repos to get
+  PER_PAGE = 100
+  host = GH_HOST if isGH else BB_HOST
+
+  vprint("Populating", host)
+
+  per_host = int(ITEMS_REQUIRED / 2) if not TESTING else PER_PAGE
+  link = GH_URL if isGH else BB_URL + "?pagelen=" + str(PER_PAGE)
+  count = 0
+  retry_count = 0
+  while count < per_host:
+
+    try:
+      link = next_gh(link) if isGH else next_bb(link)
+    except URLError as e:
+      retry_count += 1
+      if retry_count <= 5:
+        print(e)
+        print("An error occured retrieving", link, "retrying...")
+        continue
+      else:
+        print("Retried 5 times, stopping here.")
+        break
+
+    count += PER_PAGE
+
+  vprint("Commiting database changes for", host, "...")
   db.commit()
-  db.close()
 
 
-def db_gen():
-  """Generate a database from host folders"""
-  vprint("\nBeginning populating database", DB_PATH)
-  db = create_db(DB_PATH)
-  read_host(GH_HOST, db)
-  read_host(BB_HOST, db)
-  close_db(db)
-  vprint("Finished populating database", DB_PATH)
+def remove_existing():
+  if os.path.isfile(DB_PATH):
+    vprint("Removing existing", DB_PATH, "file...")
+    os.remove(DB_PATH)
 
 
-raw_gen()
-db_gen()
+def create_table():
+  db.execute("CREATE TABLE {} ({})".format(TABLE, ", ".join(COLS)))
+
+vprint("\nBeginning db generation")
+
+# remove any existing database
+remove_existing()
+
+vprint("Connecting to", DB_PATH, "file...")
+db = sqlite3.connect(DB_PATH)
+create_table()
+
+populate()
+populate(isGH=False)
+
+db.close()
+vprint("Database", DB_PATH, "has been fully populated.")
