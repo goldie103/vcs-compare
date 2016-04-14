@@ -27,7 +27,7 @@ Of this, only these were used and saved into the database:
 
 As well as an added ~host~ key for which host the data came from (i.e. ~GH~ for Github or ~BB~ for Bitbucket).
 
-** Bitbucket
+** Bitbucket Content
 The main access point for Bitbucket was this URL
 #+BEGIN_SRC
 https://api.bitbucket.org/2.0/repositories
@@ -36,13 +36,21 @@ which produces a paginated list of repositories according the value of the ~page
 #+BEGIN_SRC
 https://api.bitbucket.org/2.0/repositories?pagelen=100
 #+END_SRC
-which grabs the maximum number of entries as a paginated response.
+which grabs the maximum number of entries. From that, the URL for the link to the next page can be extracted.
 
-Each entry’s full spec can be viewed [[https://confluence.atlassian.com/bitbucket/repositories-endpoint-423626330.html][here]] on the Bitbucket API documentation website. For brevity, these are only the relevant entries for an example of the data returned on a repository from this query:
+Every Bitbucket response contains this data as a wrapper around the actual values, which are contained within the ~values~ field.
+
+| name    | description                    | example |
+|---------+--------------------------------+---------|
+| pagelen | Number of entries on this page |      10 |
+| next    | Link to next page of entries   | https://api.bitbucket.org/2.0/repositories?pagelen=100&after= …  |
+| values  | List of entries for this page  | [{"description": "…", …}, …] |
+
+Each entry’s full spec can be viewed at [[https://confluence.atlassian.com/bitbucket/repositories-endpoint-423626330.html]]. For brevity, these are only the relevant entries for an example of the data returned on a repository from this query:
 #+BEGIN_SRC javascript
 {
     "pagelen": 10,
-    "next": "https://api.bitbucket.org/2.0/repositories/pypy/pypy/commits?page=3",
+    "next": "https://api.bitbucket.org/2.0/repositories?pagelen=10&after=2008-07-12T07%3A44%3A01.476818%2B00%3A00",
     "values": [{
         "description": "Mercurial (hg) extension to allow commenting on commit messages.  Mainly written for practice reading & working with mercurial internals.\r\n",
         "links": {
@@ -57,13 +65,100 @@ Each entry’s full spec can be viewed [[https://confluence.atlassian.com/bitbuc
         "size": 7085,
     },
 #+END_SRC
+| name        | description                           | example                                                         |
+|-------------+---------------------------------------+-----------------------------------------------------------------|
+| name        | Name of the repository                | tweakmsg                                                        |
+| description | Repository description                | Mercurial (hg) extension to allow commenting on commit messages |
+| links       | Entries of links to more data         | {"commits": {"href": "…"}, …}                                   |
+| size        | Size of a repository in bytes         | 7085                                                            |
+| language    | Main language used in the respository | Ruby                                                            |
+| =full_name= | The name and owner of the repository  | plogistonjohn/tweakmsg                                          |
+| =created_on= | The ISO8601-formatted creation date   | 2008-06-25T00:53:00.273366+00:00                                |
+| =updated_on= | The ISO8601-formatted creation date   | 2012-06-24T17:32:27.458855+00:00                                |
+
 The links for obtaining counts of forks were pulled from these responses. The same could have been done for commits, but due to issues in obtaining commits from the Github API, that data was excluded.
 
-The ~next~ entry contains the link to the next page of repositories, which was used to 
-** Source
-The data was obtained through querying the [[https://api.github.com][Github]] and [[https://api.bitbucket.org/2.0][Bitbucket]] APIs and accessing several end
-** Interest
+The ~next~ entry contains the link to the next page of repositories, which was used to get enough pages of results to reach 500 total repositories.
+*** Rights
+Bitbucket’s website details the terms of usage at [[https://www.atlassian.com/legal/customer-agreement]], which gives the right to use the software in other applications such as this one.
+** Github Content
+The main access point for Github is
+#+BEGIN_SRC
+https://api.github.com/repositories
+#+END_SRC
+Pagination works similarily to Bitbucket, but Github’s API has the added complication of a more strict rate limit if used without authentication, resulting in occasional 403 errors as access is denied.
 
+Unlike Bitbucket, Github’s ~repositories~ endpoint doesn’t honor any way of controlling the number of repositories returned per page. The full spec of what can be returned can be found at . For brevity, only the relevant parts for an example of the returned data is included below:
+#+BEGIN_SRC javascript
+Status: 200 OK
+Link: <https://api.github.com/repositories?since=364>; rel="next"
+X-RateLimit-Limit: 5000
+X-RateLimit-Remaining: 4999
+[{
+    "name": "calendar_builder",
+    "full_name": "collectiveidea/calendar_builder",
+    "description": "",
+    "url": "https://api.github.com/repos/collectiveidea/calendar_builder",
+}]
+#+END_SRC
+
+| name        | description                                | example                                                      |
+|-------------+--------------------------------------------+--------------------------------------------------------------|
+| name        | Name of the repository                     | =calendar_builder=                                           |
+| =full_name= | Name and owner of the repository           | =collectiveidea/calendar_builder=                            |
+| description | Repository description                     |                                                              |
+| url         | Link to the specific API call for the repo | https://api.github.com/repos/collectiveidea/calendar_builder |
+
+The ~Link~ Header contains the link to the next page of responses. This is used to retrieve 300 responses from Github; only 250 are needed to meet 500 total for both repositories, but Github’s repositories resource does not honor any attempts to limit the number of produced entries.
+
+To access the majority of the data, the ~url~ link has to be followed. The ~commits_url~ link is similar and could have been followed to collect commits, but attempting this resulted in hitting the rate limit before the program could finish as it meant following an extra link for every repository.
+
+The ~url~ entry contains data of which the spec can be viewed at [[ . For brevity, only the relevant results have been included below:
+#+BEGIN_SRC javascript
+Status: 200 OK
+Link: <https://api.github.com/resource?page=2>; rel="next",
+      <https://api.github.com/resource?page=5>; rel="last"
+X-RateLimit-Limit: 5000
+X-RateLimit-Remaining: 4999
+[
+  {
+      "name": "Hello-World",
+      "full_name": "octocat/Hello-World",
+      "description": "This your first repo!",
+      "language": null,
+      "forks_count": 9,
+      "size": 108,
+      "created_at": "2011-01-26T19:01:12Z",
+      "updated_at": "2011-01-26T19:14:43Z",
+  }
+]
+#+END_SRC
+| name         | description                        | example              |
+|--------------+------------------------------------+----------------------|
+| name         | Name of the repository             | Hello-World          |
+| =full_name=  | Owner and name of repository       | octocat/Hello-World  |
+| language     | Main language used in repository   | null                 |
+| =forks_count= | Number of forks for the repository | 9                    |
+| size         | Size of the repository in KB       | 108                  |
+| =created_at= | Creation timestamp in ISO81 format | 2011-01-26T19:01:12Z |
+| =updated_at= | Update timestamp in ISO81 format   | 2011-01-26T19:01:12Z |
+
+*** Rights
+Github’s website details the terms of usage at [[https://help.github.com/articles/github-terms-of-service/]], which gives the right to use the software in other applications such as this one.
+** Interest
+Collecting repository data can allow for a number of interesting comparisons, such as determining which host produces repositories that are more actively maintained, or using descriptions to determine what kind of content is more common on Github than Bitbucket.
 * Cleaning
+** Produced data
+| name | description | example |
+|------+-------------+---------|
+| name |             |         |
+|      |             |         |
+|      |             |         |
+|      |             |         |
+|      |             |         |
+|      |             |         |
+|      |             |         |
+|      |             |         |
+|      |             |         |
 
 * Analysis
