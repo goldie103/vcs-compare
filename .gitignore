@@ -67,3 +67,6 @@ target/
 /GH/repositories-.txt
 /GH/repositories-since=367.txt
 /GH/repositories-since=866.txt
+/config.py
+*.db
+*.db-journal

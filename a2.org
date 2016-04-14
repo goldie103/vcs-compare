@@ -36,12 +36,30 @@ which produces a paginated list of repositories according the value of the ~page
 #+BEGIN_SRC
 https://api.bitbucket.org/2.0/repositories?pagelen=100
 #+END_SRC
-which grabs the maximum number of entries.
+which grabs the maximum number of entries as a paginated response.
 
 Each entry’s full spec can be viewed [[https://confluence.atlassian.com/bitbucket/repositories-endpoint-423626330.html][here]] on the Bitbucket API documentation website. For brevity, these are only the relevant entries for an example of the data returned on a repository from this query:
-#+BEGIN_SRC json
-
+#+BEGIN_SRC javascript
+{
+    "pagelen": 10,
+    "next": "https://api.bitbucket.org/2.0/repositories/pypy/pypy/commits?page=3",
+    "values": [{
+        "description": "Mercurial (hg) extension to allow commenting on commit messages.  Mainly written for practice reading & working with mercurial internals.\r\n",
+        "links": {
+            "commits": {"href": "https://api.bitbucket.org/2.0/repositories/phlogistonjohn/tweakmsg/commits"},
+            "forks": {"href": "https://api.bitbucket.org/2.0/repositories/phlogistonjohn/tweakmsg/forks"},
+        },
+        "name": "tweakmsg",
+        "language": "",
+        "created_on": "2008-06-25T00:53:00.273366+00:00",
+        "full_name": "phlogistonjohn/tweakmsg",
+        "updated_on": "2012-06-24T17:32:27.458855+00:00",
+        "size": 7085,
+    },
 #+END_SRC
+The links for obtaining counts of forks were pulled from these responses. The same could have been done for commits, but due to issues in obtaining commits from the Github API, that data was excluded.
+
+The ~next~ entry contains the link to the next page of repositories, which was used to 
 ** Source
 The data was obtained through querying the [[https://api.github.com][Github]] and [[https://api.bitbucket.org/2.0][Bitbucket]] APIs and accessing several end
 ** Interest

@@ -1,30 +1,41 @@
 import sqlite3
 
+from config import *
 
-# will change these to import from other python file when refactoring into
-# proper OOP structure
-DB_PATH = "repositories.db"
-TABLE = "Repositories"
 
 db = sqlite3.connect(DB_PATH)
+
+def db_exec(query, format_args=None, *exec_args):
+  """Return a Cursor object from executing a db query"""
+  return db.execute(query.format(TABLE if format_args is None else format_args),
+                    tuple(exec_args))
+
+def max_row(col):
+  """Return a row containing the maximum value of a column"""
+  return db.execute("SELECT * FROM {} ORDER BY ? DESC".format(TABLE), (col,)).fetchone()
+
 
 def most_common_names(host):
   """Return the names that occur most often for this host"""
   names = db.execute(
-    "SELECT COUNT(name), name FROM {} WHERE host=? GROUP BY name".format(TABLE),
+    """SELECT COUNT(name), name
+    FROM {}
+    WHERE host=?
+    GROUP BY name
+    ORDER BY COUNT(name) DESC""".format(TABLE),
     (host,)).fetchall()
-  names.sort(reverse=True)
   highest = names[0][0]
   common_names = []
   for count, name in names:
-    if count == highest:
-      common_names.append(name)
-    else:
+    if count != highest:
       break
+    common_names.append(name)
+
   return common_names
 
+
 def search_description(host, s):
-  """Return entries with the description matching a SQL regex"""
+  """Return entries with the description containing a string"""
   descriptions = db.execute(
     "SELECT description FROM {} WHERE description LIKE ?".format(TABLE),
     ("%" + s + "%",)).fetchall()
@@ -37,7 +48,10 @@ print(*names, sep=", ")
 
 for i in names:
   count, descriptions = search_description("GH", i)
-  print("There are {} repositories with a description containing {}:".format(
+  if count == 0:
+    continue
+  print("\nThere are {} repositories with a description containing {}:".format(
     count, i))
-  print(*descriptions, sep="\n\n", end="\n\n\n")
+  for i in descriptions:
+    print('"{}"'.format(i))
 

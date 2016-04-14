@@ -7,27 +7,7 @@ from shutil import rmtree
 from urllib.parse import urlparse, urljoin
 from urllib.request import Request, urlopen
 from urllib.error import URLError
-
-VERBOSE = True
-TESTING = True
-
-GH_HOST = "GH"
-GH_URL = "https://api.github.com/repositories"
-BB_HOST = "BB"
-BB_URL = "https://api.bitbucket.org/2.0/repositories"
-
-TABLE = "Repositories"
-DB_PATH = "repositories.db"
-COLS = ["id INTEGER PRIMARY KEY NOT NULL",
-        "host TEXT NOT NULL",
-        "name TEXT",
-        "description TEXT",
-        "size INTEGER",
-        #"commits INTEGER",
-        #"issues INTEGER",
-        "forks INTEGER",
-        "language TEXT"]
-keys = [i.split(" ")[0] for i in COLS] # keys to keep in each repo
+from config import *
 
 
 def vprint(*args):
@@ -46,6 +26,21 @@ def add_repo(repo):
     [repo[i] for i in keys[1:]])
 
 
+def clean_date(s):
+  """Return a ISO8601 timestamp with everything after and including 'T' removed"""
+  new_timestamp = ""
+  for char in s:
+    if char == 'T':
+      break
+    s += char
+  return s
+
+
+def clean_description(s):
+  """Return a string with all newlines turned to spaces"""
+  return s.replace("\n", " ")
+
+
 def next_gh(url):
 
   # return a parsed response from a url
@@ -59,7 +54,7 @@ def next_gh(url):
     url.add_header("Accept", "application/vnd.github.v3+json")
     url.add_header("User-Agent", "miscoined")
     # so secure
-    url.add_header("Authorization", "token 501dbdd48b6da585957237c46597ccd57ef8588c")
+    url.add_header("Authorization", "token " + OAUTH_TOKEN)
 
     resp = urlopen(url)
     parsed = json.loads(resp.read().decode())
@@ -67,18 +62,17 @@ def next_gh(url):
       return match('<(.*?)>; rel="next"', resp.getheader('Link')).group(1), parsed
     return parsed
 
-
   link, page = get_gh(url, retLink=True)
 
   for info in page:
     # populate dictionary with data
     info = get_gh("{}/{}".format(GH_URL[:-7], info["full_name"]))
-    STATIC = ["name", "description", "language"]
-    repo = {i: info[i] for i in STATIC}
-    repo["updated_on"] = info["updated_at"]
+    repo = {i: info[i] for i in ["name","language"]}
     repo["forks"] = info["forks_count"]
-    repo["created_on"] = info["created_at"]
     repo["size"] = info["size"] * 1024
+    repo["description"] = clean_description(info["description"])
+    repo["updated"] = clean_date(info["updated_at"])
+    repo["created"] = clean_date(info["created_at"])
     # repo["commits"] = len(get_gh(info["commits_url"]))
     # repo["issues"] = len(get_gh(info["issues_url"]))
     repo["host"] = GH_HOST
@@ -94,11 +88,7 @@ def next_bb(url):
   # return a parsed response from a url
   def get_bb(url):
     vprint("  Requesting", url, "...")
-    try:
-      return json.loads(urlopen(url).read().decode())
-    except URLError as e:
-      print("An error occured retrieving", url, "skipping...")
-      return ""
+    return json.loads(urlopen(url).read().decode())
 
   resp = get_bb(url)
   link = resp["pagelen"]
@@ -106,10 +96,12 @@ def next_bb(url):
 
   for info in page:
     # populate dictionary with data
-    STATIC = ["language", "size", "description", "name", "created_on", "updated_on"]
-    repo = {i: info[i] for i in STATIC}
-    # repo["commits"] = len(get_bb(info["links"]["commits"]["href"])["values"])
+    repo = {i: info[i] for i in ["language", "size", "name"]}
+    repo["description"] = clean_description(info["description"])
+    repo["created"] = clean_date(info["created_on"])
+    repo["updated"] = clean_date(info["updated_on"])
     repo["forks"] = len(get_bb(info["links"]["forks"]["href"])["values"])
+    # repo["commits"] = len(get_bb(info["links"]["commits"]["href"])["values"])
     # repo["issues"] = int(get_bb("{}/{}/issues".format(BB_URL, info["full_name"]))["count"])
     repo["host"] = BB_HOST
 
@@ -170,6 +162,7 @@ vprint("Connecting to", DB_PATH, "file...")
 db = sqlite3.connect(DB_PATH)
 create_table()
 
+keys = [i.split(" ")[0] for i in COLS] # keys to keep in each repo
 populate()
 populate(isGH=False)
 
