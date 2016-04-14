@@ -45,15 +45,13 @@ def next_gh(url):
 
   # return a parsed response from a url
   def get_gh(url, retLink=False):
-    url = sub("{/.+?}", "", url)
+    #url = sub("{/.+?}", "", url)
     vprint("  Requesting", url, "...")
 
     url = Request(url)
-    # explicitly request v3 version of the API
     # make github like me :(
-    url.add_header("Accept", "application/vnd.github.v3+json")
+    url.add_header("Accept", "application/vnd.github.v3+json") # request v3
     url.add_header("User-Agent", "miscoined")
-    # so secure
     url.add_header("Authorization", "token " + OAUTH_TOKEN)
 
     resp = urlopen(url)
@@ -66,7 +64,7 @@ def next_gh(url):
 
   for info in page:
     # populate dictionary with data
-    info = get_gh("{}/{}".format(GH_URL[:-7], info["full_name"]))
+    info = get_gh(info["url"])
     repo = {i: info[i] for i in ["name","language"]}
     repo["forks"] = info["forks_count"]
     repo["size"] = info["size"] * 1024
